@@ -158,38 +158,58 @@ public class UseridNpsDtsParser {
 		UserName = null;
 		FramedIPAddress = null;
 		includeMatch = includePat.matcher(element);
-		if (includeMatch.matches()) {
-			logHandler.fine("Provided NPS log element matches the include pattern");
-			is.setCharacterStream(new StringReader(element));
-			try {
-				xmlReader.parse(is);
-				is.getCharacterStream().close();
-			} catch (SAXException e) {
-				logHandler.warning("Error parsing document");
-			}
-			if (elementData.get("Acct-Status-Type") != null) { // It is a Radius Accounting Record
-				AcctStatusType = elementData.get("Acct-Status-Type");
-				if(AcctStatusType.equals("3") || AcctStatusType.equals("1") || AcctStatusType.equals("2")) // It is a "Start", "Stop" or "Interim" type of Accounting Record
-					if (elementData.get("User-Name") != null ) { // There is a username attribute
-						String UserNameString = elementData.get("User-Name").toLowerCase();
-						if (!UserNameString.startsWith("host/"))  // IMI: It is not a host based authentication
-							if(elementData.get("Framed-IP-Address") != null) { // There is an IP address
-								FramedIPAddress = elementData.get("Framed-IP-Address");
-								if (UserNameString.matches(".*@.*")) { // It is a username@domain style
-									mindex = UserNameString.indexOf("@");
-									UserName = UserNameString.substring(mindex+1,UserNameString.length())+"\\"+UserNameString.substring(0, mindex);
-								}
-								else if(UserNameString.matches(".*\\\\.*")) 
-									UserName = UserNameString;
-								else 
-									UserName = defaultDomain+"\\"+UserNameString;
-								logHandler.fine("Received a valid userID NPS log element ("+AcctStatusType+";"+UserName+";"+FramedIPAddress+")");
-								NASIdentifier = elementData.get("NAS-Identifier");
-								return true;
-							}
-					}
-			}
+		if (!includeMatch.matches()) {
+			return false;
 		}
-		return false;
+
+		logHandler.fine("Provided NPS log element matches the include pattern");
+		is.setCharacterStream(new StringReader(element));
+		
+		try {
+			xmlReader.parse(is);
+			is.getCharacterStream().close();
+		} catch (SAXException e) {
+			logHandler.warning("Error parsing document");
+		}
+		
+		if (elementData.get("Acct-Status-Type") == null) { // Ensure it's a Radius Accounting Record
+			return false;
+		}
+
+		AcctStatusType = elementData.get("Acct-Status-Type");
+		if(!(AcctStatusType.equals("3") || AcctStatusType.equals("1") || AcctStatusType.equals("2"))) { // It is a "Start", "Stop" or "Interim" type of Accounting Record
+			return false;
+		}
+
+		if (elementData.get("User-Name") == null ) { // Ensure there's a username attribute
+			return false;
+		}
+
+		String UserNameString = elementData.get("User-Name").toLowerCase();
+		if (UserNameString.startsWith("host/")) {  // IMI: Should not be host-based authentication
+			return false;
+		}
+
+		if (UserNameString.contains("anonymous")) { // Should not be anonymous
+			return false;
+		}
+
+		if(elementData.get("Framed-IP-Address") == null) { // Ensure there's an IP address
+			return false;
+		}
+
+		FramedIPAddress = elementData.get("Framed-IP-Address");
+		if (UserNameString.matches(".*@.*")) { // It is a username@domain style
+			mindex = UserNameString.indexOf("@");
+			UserName = UserNameString.substring(mindex+1,UserNameString.length())+"\\"+UserNameString.substring(0, mindex);
+		} else if (UserNameString.matches(".*\\\\.*")) {
+			UserName = UserNameString;
+		} else {
+			UserName = defaultDomain+"\\"+UserNameString;
+		}
+		
+		logHandler.fine("Received a valid userID NPS log element ("+AcctStatusType+";"+UserName+";"+FramedIPAddress+")");
+		NASIdentifier = elementData.get("NAS-Identifier");
+		return true;
 	}
 }
